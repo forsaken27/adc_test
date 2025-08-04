@@ -1,46 +1,71 @@
 import serial
 import argparse
 import csv
-
-###################              Initializing              ##################################
+import time
+###################              Initializing              ##########################################
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--serialPort', default='COM7', type=str, help='Please type the serial port path')
-parser.add_argument('--timeDuration', default='1000', type=int, help='Please input time duration in milliseconds')
+parser.add_argument('--serialPort', default='COM8', type=str, help='Please type the serial port path')
+parser.add_argument('--timeDuration', default='1', type=int, help='Please input time duration in seconds')
 args = parser.parse_args()
-ser = serial.Serial(args.serialPort, 9600)
-sampling_frequency = 10
-csv_data = []
+ser = serial.Serial(args.serialPort, 1000000)
+csv_row = []
+#csv_row_2 = []
 duration = args.timeDuration
 
-###################              Reading from Serial              ###########################
+###################              Reading from Serial              ###################################
 
-current_time = 0
-while current_time < duration:
+start = time.time()
+buffer = b''
+
+while time.time() - start < duration:
     if ser.in_waiting:
-        raw_data = ser.readline()
-        current_voltage = raw_data.decode("utf-8").strip()
-        csv_data.append((current_voltage))
-        current_time += sampling_frequency
+        buffer += ser.read(ser.in_waiting)
+        while b'\n' in buffer:
+            line, buffer = buffer.split(b'\n', 1)
+            try:
+                parts = line.decode("utf-8").strip().split()
+                csv_row.append(parts)
+            except UnicodeDecodeError:
+                continue
 ser.close()    
 
-###################              Converting into float              #########################
+###################              Preprocess the received data              #########################
 
-current_time = 0
-for i in range(len(csv_data)):
-    try:
-        csv_data[i] = [current_time, float(csv_data[i])]
-    except ValueError:
-        csv_data[i] = [current_time, 0.0]
+csv_data = []
+current_time = 0.0
+sampling_frequency = duration/len(csv_row)
+for i in range(len(csv_row)):
+    if len(csv_row[i])==12:
+        try:
+            csv_data.append([current_time,  float(csv_row[i][0])*3.3/511.0, 
+                                            float(csv_row[i][1])*3.3/511.0,
+                                            float(csv_row[i][2])*3.3/511.0,
+                                            float(csv_row[i][3])*3.3/511.0,
+                                            float(csv_row[i][4])*3.3/511.0,
+                                            float(csv_row[i][5])*3.3/511.0,
+                                            float(csv_row[i][6])*3.3/511.0,
+                                            float(csv_row[i][7])*3.3/511.0,
+                                            float(csv_row[i][8])*3.3/511.0,
+                                            float(csv_row[i][9])*3.3/511.0,
+                                            float(csv_row[i][10])*3.3/511.0,
+                                            float(csv_row[i][11])*3.3/511.0])   
+        except ValueError:
+            csv_data.append([current_time, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    else:
+        csv_data.append([current_time, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+
     current_time += sampling_frequency
 
-###################              Creating CSV file              #############################
+###################              Creating CSV file              ####################################
 
 with open("result.csv", mode="w", newline='') as file:
     writer = csv.writer(file)
     writer.writerows(csv_data)
 print()
 print("..... Process finished .....")
+print()
+print(f"The frequency of acquiring the data is : {len(csv_data)/duration} Hz")
 print()
 
 
